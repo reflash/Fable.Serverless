@@ -17,8 +17,7 @@ type Model =
       Note : string }
     member this.UpdateUser user = { this with User = user }
     static member PostUrl =
-        //"https://fableserverless.azurewebsites.net/api/json"
-        "http://localhost:7071/api/json"
+        "/api/json"
 
 type Msg =
     | Increment
