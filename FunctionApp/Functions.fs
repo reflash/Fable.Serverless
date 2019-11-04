@@ -1,6 +1,8 @@
 ﻿namespace Fable.Serverless
 
+open System
 open System.IO
+open System.Collections.Generic
 open Newtonsoft.Json
 open Microsoft.AspNetCore.Http
 open Microsoft.AspNetCore.Mvc
@@ -10,6 +12,8 @@ open Microsoft.Extensions.Logging
 open SharedDomain
 open Microsoft.Azure.Documents.Client
 open Microsoft.Azure.Documents.Linq
+open Hopac
+open HttpFs.Client
 
 module Server =
     let runQuery<'T> (dq:IDocumentQuery<'T>) : 'T list = 
@@ -19,8 +23,15 @@ module Server =
                     dq.ExecuteNextAsync<'T>()
                     |> Async.AwaitTask          // Task<T>->Async<T>, where T is ResourceResponse<DocumentCollection>
                     |> Async.RunSynchronously
-        ]     
-    let [<Literal>] MIMEJSON = "application/json"
+        ]
+    
+    let request url =
+        Request.createUrl Get url
+        |> Request.setHeader (Accept "application/json")
+        |> Request.responseAsString
+        |> run
+
+    let basePath = Environment.GetEnvironmentVariable("WEBSITE_HOSTNAME")
 
     let serveStaticContent (log : ILogger) (context : ExecutionContext) (fileName : string)  =
         let filePath = Path.Combine(context.FunctionAppDirectory, "public", fileName) |> Path.GetFullPath
@@ -33,33 +44,12 @@ module Server =
             log.LogError msg
             BadRequestObjectResult msg :> ObjectResult
 
-    [<FunctionName("serveStatic")>]
-    let serveStatic ([<HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "public/{staticFile?}")>] req : HttpRequest,
+    [<FunctionName("serveWebsite")>]
+    let serveStatic ([<HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "")>] req : HttpRequest,
                      log : ILogger,
                      context : ExecutionContext) =
-        log.LogInformation "Serving static content"
-        match req.Path with
-        | s when s.HasValue && s.Value = "/api/public/" -> "index.html" |> serveStaticContent log context
-        | s -> s.Value.Replace("/api/public/", "") |> serveStaticContent log context
-
-    [<FunctionName("serveJSON")>]
-    let serveJSON ([<HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "json")>] req : HttpRequest, log : ILogger) =
-        log.LogInformation "Serving JSON"
-        match req.ContentType with
-        | MIMEJSON ->
-            let sr = new StreamReader(req.Body)
-            let postedModel = sr.ReadToEnd() |> User.Decode
-            let msg = sprintf "Hello %s. I see you can count to %i" postedModel.Name postedModel.Count
-            let pause = (System.Math.Abs postedModel.Count) * 1000
-            System.Threading.Thread.Sleep pause // Sleep to show non-blocking UI
-            { postedModel with Message = msg }
-            |> User.Encode
-            |> OkObjectResult
-            :> ObjectResult
-        | _ ->
-            sprintf "Incorrect mime type. I was expecting json but got: %s" req.ContentType
-            |> BadRequestObjectResult
-            :> ObjectResult
+        log.LogInformation "Serving website content"
+        "index.html" |> serveStaticContent log context
 
     [<FunctionName("getCities")>]
     let getCities([<HttpTrigger(
@@ -81,4 +71,56 @@ module Server =
         |> OkObjectResult
         :> ObjectResult
 
-        
+    // scale is either C or F
+    [<FunctionName("getTemp")>]
+    let getTemp([<HttpTrigger(
+                    AuthorizationLevel.Anonymous, 
+                    "get", Route = "getTemp/{city}/{scale}")>] req : HttpRequest,
+                    city: string,
+                    scale: string,
+                    log : ILogger) =
+               
+        log.LogInformation ("getTemp for {0} temp of {1} called", city, scale)
+        match scale.ToUpper() with
+        | "C" -> 
+            sprintf "http://%s/api/getTempC/%s" basePath city
+            |> request
+            |> OkObjectResult 
+            :> ObjectResult
+        | "F" -> 
+            sprintf "http://%s/api/getTempF/%s" basePath city
+            |> request
+            |> OkObjectResult 
+            :> ObjectResult
+        | _ -> failwith "wrong scale"
+
+    // (0°C × 9/5) + 32 = 32°F
+    [<FunctionName("getTempF")>]
+    let getTempF([<HttpTrigger(
+                    AuthorizationLevel.Anonymous, 
+                    "get", Route = "getTempF/{city}")>] req : HttpRequest,
+                    city: string,
+                    log : ILogger) =
+               
+        log.LogInformation ("getTempF for {0} called", city)
+        sprintf "http://%s/api/getTempC/%s" basePath city
+        |> request
+        |> float |> fun c -> (c * 9. / 5.) + 32.
+        |> OkObjectResult
+        :> ObjectResult 
+    
+    [<FunctionName("getTempC")>]
+    let getTempC([<HttpTrigger(
+                    AuthorizationLevel.Anonymous, 
+                    "get", Route = "getTempC/{city}")>] req : HttpRequest,
+                    [<CosmosDB(
+                        "WeatherItems",
+                        "Items",
+                        ConnectionStringSetting = "CosmosDBConnection",
+                        SqlQuery = "select * from WeatherItems r where r.city = {city}")>] wis: IEnumerable<WeatherInfo>,
+                    log : ILogger) =
+        let wi = Seq.head wis
+        log.LogInformation ("getTempC for {0} called", wi.City)
+        wi.TempInC
+        |> OkObjectResult
+        :> ObjectResult

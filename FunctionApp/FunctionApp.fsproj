@@ -7,6 +7,8 @@
     <Compile Include="Functions.fs" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Hopac" Version="0.4.1" />
+    <PackageReference Include="Http.fs" Version="5.3.0" />
     <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.CosmosDB" Version="3.0.5" />
     <PackageReference Include="Microsoft.NET.Sdk.Functions" Version="1.0.29" />
   </ItemGroup>
