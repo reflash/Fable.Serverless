@@ -1,5 +1,7 @@
 # Fable + Preact.js + Serverless
 
+This is reworked sample of https://github.com/pauldorehill/Fable.Serverless
+
 Fable SPA deployed to Azure functions.
 
 - The static content is all stored in the function app and served from it
