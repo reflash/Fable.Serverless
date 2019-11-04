@@ -1,22 +1,25 @@
 ﻿namespace Fable.Serverless
 
 open System.IO
+open Newtonsoft.Json
+open Microsoft.AspNetCore.Http
 open Microsoft.AspNetCore.Mvc
 open Microsoft.Azure.WebJobs
 open Microsoft.Azure.WebJobs.Extensions.Http
-open Microsoft.AspNetCore.Http
 open Microsoft.Extensions.Logging
 open SharedDomain
+open Microsoft.Azure.Documents.Client
+open Microsoft.Azure.Documents.Linq
 
 module Server =
-
-    // The RequestObjects are new since I last looked at functions.
-    // Previously I used something like
-    // let r = new HttpResponseMessage()
-    // r.StatusCode <- HttpStatusCode.OK
-    // r.Content <- new StreamContent(file)
-    // r.Content.Headers.ContentType <- Headers.MediaTypeHeaderValue("text/html")
-
+    let runQuery<'T> (dq:IDocumentQuery<'T>) : 'T list = 
+        [
+            while (dq.HasMoreResults) 
+                do yield!
+                    dq.ExecuteNextAsync<'T>()
+                    |> Async.AwaitTask          // Task<T>->Async<T>, where T is ResourceResponse<DocumentCollection>
+                    |> Async.RunSynchronously
+        ]     
     let [<Literal>] MIMEJSON = "application/json"
 
     let serveStaticContent (log : ILogger) (context : ExecutionContext) (fileName : string)  =
@@ -57,3 +60,25 @@ module Server =
             sprintf "Incorrect mime type. I was expecting json but got: %s" req.ContentType
             |> BadRequestObjectResult
             :> ObjectResult
+
+    [<FunctionName("getCities")>]
+    let getCities([<HttpTrigger(
+                    AuthorizationLevel.Anonymous, 
+                    "get", Route = "getCities")>] req : HttpRequest,
+                    [<CosmosDB(
+                        "WeatherItems",
+                        "Items",
+                        ConnectionStringSetting = "CosmosDBConnection")>] client : DocumentClient,
+                    log : ILogger) =
+               
+        log.LogInformation "getCities called"
+        let collectionUri = UriFactory.CreateDocumentCollectionUri("WeatherItems", "Items");
+        let query = client.CreateDocumentQuery<WeatherInfo>(collectionUri)
+                            .AsDocumentQuery()
+        let results = runQuery query
+        results
+        |> JsonConvert.SerializeObject
+        |> OkObjectResult
+        :> ObjectResult
+
+        

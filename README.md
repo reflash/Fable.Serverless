@@ -30,6 +30,10 @@ Makes use of `.fsproj` [globbing](https://github.com/Microsoft/VSProjectSystem/b
 npm install -g azure-functions-core-tools
 ```
 
+### local.settings.json
+
+Fill in the required data in local.settings.json (use local.settings.template.json as an example)
+
 ### Build the project with
 
 ```
