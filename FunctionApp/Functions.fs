@@ -32,6 +32,10 @@ module Server =
         |> run
 
     let basePath = Environment.GetEnvironmentVariable("WEBSITE_HOSTNAME")
+    let [<Literal>] CosmosDbConnectionName = "CosmosDBConnection"
+    let [<Literal>] WeatherDb = "WeatherItems"
+    let [<Literal>] WeatherCollection = "Items"
+    let [<Literal>] WeatherSql = "select * from WeatherItems r where r.city = {city}"
 
     let serveStaticContent (log : ILogger) (context : ExecutionContext) (fileName : string)  =
         let filePath = Path.Combine(context.FunctionAppDirectory, "public", fileName) |> Path.GetFullPath
@@ -55,14 +59,12 @@ module Server =
     let getCities([<HttpTrigger(
                     AuthorizationLevel.Anonymous, 
                     "get", Route = "getCities")>] req : HttpRequest,
-                    [<CosmosDB(
-                        "WeatherItems",
-                        "Items",
-                        ConnectionStringSetting = "CosmosDBConnection")>] client : DocumentClient,
+                    [<CosmosDB(WeatherDb, WeatherCollection, 
+                      ConnectionStringSetting = CosmosDbConnectionName)>] client : DocumentClient,
                     log : ILogger) =
                
         log.LogInformation "getCities called"
-        let collectionUri = UriFactory.CreateDocumentCollectionUri("WeatherItems", "Items");
+        let collectionUri = UriFactory.CreateDocumentCollectionUri(WeatherDb, "Items");
         let query = client.CreateDocumentQuery<WeatherInfo>(collectionUri)
                             .AsDocumentQuery()
         let results = runQuery query
@@ -113,11 +115,8 @@ module Server =
     let getTempC([<HttpTrigger(
                     AuthorizationLevel.Anonymous, 
                     "get", Route = "getTempC/{city}")>] req : HttpRequest,
-                    [<CosmosDB(
-                        "WeatherItems",
-                        "Items",
-                        ConnectionStringSetting = "CosmosDBConnection",
-                        SqlQuery = "select * from WeatherItems r where r.city = {city}")>] wis: IEnumerable<WeatherInfo>,
+                    [<CosmosDB(WeatherDb, WeatherCollection, ConnectionStringSetting = CosmosDbConnectionName,
+                        SqlQuery = WeatherSql)>] wis: IEnumerable<WeatherInfo>,
                     log : ILogger) =
         let wi = Seq.head wis
         log.LogInformation ("getTempC for {0} called", wi.City)
