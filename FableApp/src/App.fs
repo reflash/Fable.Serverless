@@ -55,11 +55,21 @@ let update (msg : Msg) (model : Model) : Model * Cmd<Msg> =
             }
         model , Cmd.OfPromise.result msg
 
+let flexCenterStyle = 
+    [
+        Display DisplayOptions.Flex
+        JustifyContent "center"
+        AlignItems AlignItemsOptions.Center
+        FlexDirection "column"
+        Height "100vh"
+    ]
+
 // Rendered with Preact
 let view (model : Model) dispatch =
   let options = (List.map (fun city -> option [Value city] [str city]) model.Cities)
-  div []
-      [ div []
+  div [Style flexCenterStyle]
+      [ p [Style [FontSize "30px"]] [str "Weather Serverless"]
+        div []
             [ str "Cities:"; 
                 select [
                     Value model.SelectedCity
@@ -69,7 +79,7 @@ let view (model : Model) dispatch =
                     )
                 ] options
             ]
-        p [] [ sprintf "Selected city: %s" model.SelectedCity |> str ]
+        p [ Style [FontSize "30px"]] [ sprintf "Selected city: %s" model.SelectedCity |> str ]
         p [] [ sprintf "Current temp in %s is %f" model.SelectedCity model.Temp |> str ]
 
         button [ OnClick (fun _ -> dispatch Submit) ] [ str "Send" ]
