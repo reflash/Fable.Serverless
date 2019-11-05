@@ -49,11 +49,13 @@ module Server =
             BadRequestObjectResult msg :> ObjectResult
 
     [<FunctionName("serveWebsite")>]
-    let serveStatic ([<HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "")>] req : HttpRequest,
+    let serveStatic ([<HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "{staticFile?}")>] req : HttpRequest,
                      log : ILogger,
                      context : ExecutionContext) =
         log.LogInformation "Serving website content"
-        "index.html" |> serveStaticContent log context
+        match req.Path with
+        | s when s.Value = "/api/" -> "index.html" |> serveStaticContent log context
+        | s -> s.Value.Replace("/api/", "") |> serveStaticContent log context
 
     [<FunctionName("getCities")>]
     let getCities([<HttpTrigger(
@@ -69,6 +71,7 @@ module Server =
                             .AsDocumentQuery()
         let results = runQuery query
         results
+        |> List.map (fun wi -> wi.City)
         |> JsonConvert.SerializeObject
         |> OkObjectResult
         :> ObjectResult

@@ -6,6 +6,7 @@ open Elmish.React
 open Fable.React
 open Fable.React.Props
 open Fable.Core
+open Fable.Core.JsInterop
 open Fable.Import
 open Thoth
 open Thoth.Fetch
@@ -13,55 +14,66 @@ open SharedDomain
 
 // Currently need to set the URL manually for local testing etc
 type Model =
-    { User : User
-      Note : string }
-    member this.UpdateUser user = { this with User = user }
-    static member PostUrl =
-        "/api/json"
+    { Cities : string list
+      SelectedCity: string
+      Temp : float }
+    member this.UpdateCities cities = { this with Cities = cities }
+    member this.SelectCity city = { this with SelectedCity = city }
+    member this.UpdateTemp temp = { this with Temp = temp }
+    member this.GetCitiesUrl ()  =
+        "/api/getCities"
+    member this.GetTempUrl ()  =
+        sprintf "/api/getTemp/%s/F" this.SelectedCity
 
 type Msg =
-    | Increment
-    | Decrement
-    | UpdateName of string
     | Submit
-    | PostedJson of User
+    | FetchCities
+    | FetchedCities of string list
+    | ChooseCity of string
+    | FetchedTemp of float
 
 let init() : Model * Cmd<Msg> =
-    let user = { Name = "" ; Count = 0; Message = "" }
-    { User = user; Note = "" }, Cmd.none
+    { Cities = [] ; SelectedCity = ""; Temp = 0. }, Cmd.ofMsg FetchCities
 
 let update (msg : Msg) (model : Model) : Model * Cmd<Msg> =
     match msg with
-    | Increment ->  model.UpdateUser { model.User with Count = model.User.Count + 1 }, Cmd.none
-    | Decrement -> model.UpdateUser { model.User with Count = model.User.Count - 1 }, Cmd.none
-    | UpdateName newName -> model.UpdateUser { model.User with Name = newName }, Cmd.none
+    | FetchCities ->
+        let msg : JS.Promise<Msg> =
+            promise {
+                let! cities = Fetch.get(model.GetCitiesUrl())
+                return (FetchedCities cities)
+            }
+        model , Cmd.OfPromise.result msg
+    | FetchedCities cities -> model.UpdateCities(cities), Cmd.none
+    | FetchedTemp temp -> model.UpdateTemp(temp), Cmd.none
+    | ChooseCity city -> model.SelectCity(city), Cmd.none
     | Submit ->
         let msg : JS.Promise<Msg> =
             promise {
-                let! post = Fetch.post(Model.PostUrl, model.User)
-                return (PostedJson post)
+                let! temp = Fetch.get(model.GetTempUrl())
+                return (FetchedTemp temp)
             }
-        let newUser = if model.User.Message <> "" then { model.User with Message = "Trying again..." } else model.User
-        let note =
-            let time = Math.Abs model.User.Count
-            sprintf "Sent to server. Please wait %is and continue clicking to show non blocking UI" time
-        let newModel = { model with Note = note; User = newUser }
-        newModel , Cmd.OfPromise.result msg
-    | PostedJson user -> { model with Note = "The count is now at your original value"; User = user } , Cmd.none
+        model , Cmd.OfPromise.result msg
 
 // Rendered with Preact
 let view (model : Model) dispatch =
+  let options = (List.map (fun city -> option [Value city] [str city]) model.Cities)
   div []
       [ div []
-            [ str "Name"; input [ Value model.User.Name;  OnChange (fun s -> dispatch (UpdateName s.Value)) ] ]
-        div []
-            [ button [ OnClick (fun _ -> dispatch Increment) ] [ str "+" ]
-              div [] [ str (string model.User.Count) ]
-              button [ OnClick (fun _ -> dispatch Decrement) ] [ str "-" ] ]
+            [ str "Cities:"; 
+                select [
+                    Value model.SelectedCity
+                    OnChange (fun ev ->
+                        ChooseCity ev.target?value
+                        |> dispatch
+                    )
+                ] options
+            ]
+        p [] [ sprintf "Selected city: %s" model.SelectedCity |> str ]
+        p [] [ sprintf "Current temp in %s is %f" model.SelectedCity model.Temp |> str ]
 
         button [ OnClick (fun _ -> dispatch Submit) ] [ str "Send" ]
-        p [] [ str model.User.Message ]
-        p [] [ str model.Note ] ]
+      ]
 
 Program.mkProgram init update view
 |> Program.withReactSynchronous "elmish-app"

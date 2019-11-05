@@ -18,7 +18,7 @@ module.exports = {
         new HtmlWebpackPlugin({
             template: "./src/public/index.html",
             favicon: "./src/public/favicon.ico",
-            title: "Fable + Preact + Serverless",
+            title: "Sample Fable + Preact + Serverless app",
             hash: true,
             cache: true,
             // https://github.com/jantimon/html-webpack-plugin/issues/1094 - Explicity required with v3
